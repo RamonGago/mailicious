@@ -364,7 +364,7 @@ unsigned int search_email_record(mailing_list_t *_mailing_list, char *_email)
 	return NO_EMAIL;
 }
 
-void print_list(mailing_list_t *_mailing_list, char *_dir_path, int _list_size, int _no_warn, char *_separator_token)
+int print_list(mailing_list_t *_mailing_list, char *_dir_path, int _list_size, int _no_warn, char *_separator_token)
 {
 	/*
 	 *This function export all emails in  _mailing_list. Each email is put into a file according to 
@@ -382,14 +382,20 @@ void print_list(mailing_list_t *_mailing_list, char *_dir_path, int _list_size, 
 	FILE *out;
 	char out_name[PATH_MAX_LEN];
 	char out_path[PATH_MAX_LEN];
+	int cont;
 	
 	en = malloc(sizeof(email_node_t));
 	email_count = 0;
 	file_index = 0;
 	out = NULL;
 	out_name[0] = '\0';
-	if(!opendir(_dir_path))
+	
+	if(_list_size > 0 && !opendir(_dir_path))
 		mkdir(_dir_path, S_IRWXU | S_IRWXG | S_IRWXO);
+	else if(_list_size == 0)
+		out = fopen(_dir_path, "w");
+	
+	cont = 0;
 	/*pass through each list pointed in the index table entries*/
 	for(i = 0; i < INDEX_HASH_TABLE_SIZE; i++)
 	{
@@ -401,33 +407,40 @@ void print_list(mailing_list_t *_mailing_list, char *_dir_path, int _list_size, 
 				read_email_record(en, _mailing_list, aux);
 				if(en->warning == WARN_CHAR && _no_warn)
 					continue;
-				if(out_name[0] != en->email[0])
+				if(_list_size > 0)
 				{
-					file_index = 0;
-					email_count = 0;
-					sprintf(out_name, "%c%d", en->email[0], file_index);
-					sprintf(out_path, "%s/%s", _dir_path, out_name);
-					if(out != NULL)
+					if(out_name[0] != en->email[0])
+					{
+						file_index = 0;
+						email_count = 0;
+						sprintf(out_name, "%c%d", en->email[0], file_index);
+						sprintf(out_path, "%s/%s", _dir_path, out_name);
+						if(out != NULL)
+							fclose(out);
+						out = fopen(out_path, "w");
+					}
+					else if(email_count == _list_size)
+					{
 						fclose(out);
-					out = fopen(out_path, "w");
+						file_index++;
+						email_count = 0;
+						sprintf(out_name, "%c%d", en->email[0], file_index);
+						sprintf(out_path, "%s/%s", _dir_path, out_name);
+						out = fopen(out_path, "w");
+					}
 				}
-				else if(email_count == _list_size)
-				{
-					fclose(out);
-					file_index++;
-					email_count = 0;
-					sprintf(out_name, "%c%d", en->email[0], file_index);
-					sprintf(out_path, "%s/%s", _dir_path, out_name);
-					out = fopen(out_path, "w");
-				}
+				
 				fprintf(out, "%s%s", en->email, _separator_token);
 				email_count++;
+				cont++;
 				aux = en->next_email_pos;
 			}
 		}
 	}
 	fclose(out);
 	free(en);
+	
+	return cont;
 }
 
 int update_email(mailing_list_t *_mailing_list, char *_old_email, char *_new_email, char _warn)
@@ -479,8 +492,7 @@ float ping_domain(char *domain)
 	int i, j, c;
     
 	/*execute ping through a pipe*/
-	
-    sprintf(command, "ping -c 1 -w 5 %s 2> /dev/null", domain);
+    sprintf(command, "ping -c 1 -W 1 %s 2> /dev/null", domain);
     pf = popen(command,"r");
     if(!pf)
 		return -1;
@@ -499,7 +511,7 @@ float ping_domain(char *domain)
 		pclose(pf);
 		return NO_HOST;
 	}
-	else if(data[data_len - 1] == '\n' && data[data_len - 2] == '\n')
+	else if(data_len >= 2 && data[data_len - 1] == '\n' && data[data_len - 2] == '\n')
 	{
 		pclose(pf);
 		return NO_RESPONSE;
@@ -535,6 +547,8 @@ void check_domain(mailing_list_t *_mailing_list, char *_out_name)
 	
 	email_node_t *en;
 	unsigned int aux;
+	unsigned int record_pos;
+	record_list_t *record_node;
 	domain_list_t *domain_list;
 	domain_list_t *dom, *dom_prev, *dom_curr;
 	int i, j, res;
@@ -542,6 +556,7 @@ void check_domain(mailing_list_t *_mailing_list, char *_out_name)
 	char fastest_host[RFC_DOM_MAX_LEN];
 	char slowest_host[RFC_DOM_MAX_LEN];
 	int cont_ok, cont_no_host, cont_no_repsonse;
+	int deleted_emails;
 	FILE *out;
 
 	domain_list = dom = dom_prev = dom_curr = NULL;
@@ -555,6 +570,7 @@ void check_domain(mailing_list_t *_mailing_list, char *_out_name)
 			while(aux != NO_EMAIL)
 			{
 				read_email_record(en, _mailing_list, aux);
+				record_pos = aux;
 				aux = en->next_email_pos;
 				
 				j = 0;
@@ -564,23 +580,34 @@ void check_domain(mailing_list_t *_mailing_list, char *_out_name)
 				/*each domain must be considered only one time, so I put domains 
 				  in an ordered list to avoid duplicates*/
 				
-				dom = malloc(sizeof(domain_list_t));
-				dom->domain = strdup(&(en->email[j + 1]));
-				dom->next_domain = NULL;
-				
 				dom_curr = domain_list;
 				dom_prev = NULL;
 				res = 1;
 				/*check if domain is already present into the list*/
-				while(dom_curr != NULL && (res = strcmp(dom->domain, dom_curr->domain)) > 0)
+				while(dom_curr != NULL && (res = strcmp(&(en->email[j + 1]), dom_curr->domain)) > 0)
 				{
 					dom_prev = dom_curr;
 					dom_curr = dom_curr->next_domain;
 				}
 				
-				/*if not add it*/
-				if(res != 0)
+				if(res == 0)
 				{
+					record_node = malloc(sizeof(record_list_t));
+					record_node->pos = record_pos;
+					record_node->next_pos = dom_curr->record_list;
+					
+					dom_curr->record_list = record_node;
+				}
+				/*if not add it*/
+				else
+				{
+					dom = malloc(sizeof(domain_list_t));
+					dom->domain = strdup(&(en->email[j + 1]));
+					dom->next_domain = NULL;
+					dom->record_list = malloc(sizeof(record_list_t));
+					dom->record_list->pos = record_pos;
+					dom->record_list->next_pos = NULL;
+					
 					if(dom_curr == domain_list)
 					{
 						dom->next_domain = domain_list;
@@ -591,10 +618,6 @@ void check_domain(mailing_list_t *_mailing_list, char *_out_name)
 						dom->next_domain = dom_curr;
 						dom_prev->next_domain = dom;
 					}
-				}
-				else {
-					free(dom->domain);
-					free(dom);
 				}
 			}
 		}
@@ -608,6 +631,7 @@ void check_domain(mailing_list_t *_mailing_list, char *_out_name)
 	response = max_response = min_response = tot_response = cont_ok = cont_no_host = cont_no_repsonse = 0;
 	memset(fastest_host, '\0', RFC_DOM_MAX_LEN);
 	memset(slowest_host, '\0', RFC_DOM_MAX_LEN);
+	deleted_emails = 0;
 	/*I get one by one the domains from the list and ping them*/
 	while(domain_list)
 	{
@@ -629,8 +653,8 @@ void check_domain(mailing_list_t *_mailing_list, char *_out_name)
 				min_response = response;
 				strcpy(fastest_host, dom->domain);
 			}
-			printf("rtt: %.3f ms\n", response);
-			fprintf(out, "%.3f\n", response);
+			printf("%.3f ms\n", response);
+			fprintf(out, "%.3f;\n", response);
 		}
 		else
 		{
@@ -643,19 +667,54 @@ void check_domain(mailing_list_t *_mailing_list, char *_out_name)
 			else if(response == NO_HOST)
 			{
 				cont_no_host++;
-				printf("unknown host\n");
-				fprintf(out, "x;\n");
+				printf("unknown host\t");
+				fprintf(out, "x;");
 			}
 		}
 		domain_list = domain_list->next_domain;
+		
+		i = 0;
+		while(dom->record_list)
+		{
+			if(response == NO_HOST)
+			{
+				delete_email_record(_mailing_list, dom->record_list->pos);
+				i++;
+			}
+			
+			record_node = dom->record_list;
+			dom->record_list = dom->record_list->next_pos;
+			free(record_node);
+		}
 		free(dom->domain);
 		free(dom);
+		
+		deleted_emails += i;
+		
+		if(response == NO_HOST)
+		{
+			printf("deleted %d emails\n", i);
+			fprintf(out, "%d;\n", i);
+		}
 	}
 	printf("\n\n");
-	printf("Total ping performed: %d (%d with no response and %d to unknown hosts)\n\n", cont_ok + cont_no_repsonse + cont_no_host, cont_no_repsonse, cont_no_host);
+	printf("Total pings performed: %d (%d with no response and %d to unknown hosts)\n\n", cont_ok + cont_no_repsonse + cont_no_host, cont_no_repsonse, cont_no_host);
 	printf("Average response %.3f ms\n\n", tot_response / cont_ok);
-	printf("Fastest response from %s of %.3f ms\n\n", fastest_host, min_response);
-	printf("Slowest response from %s of %.3f ms\n\n", slowest_host, max_response);
+	printf("Best response from %s of %.3f ms\n\n", fastest_host, min_response);
+	printf("Worst response from %s of %.3f ms\n\n", slowest_host, max_response);
+	printf("Deleted %d emails from mailing list\n\n", deleted_emails);
+	
+	fseek(out, 0, SEEK_SET);
+	
+	fprintf(out, "total pings;%d;\n", cont_ok + cont_no_repsonse + cont_no_host);
+	fprintf(out, "no response pings;%d;\n", cont_no_repsonse);
+	fprintf(out, "unknown host pings;%d;\n", cont_no_host);
+	fprintf(out, "avg response;%.3f ms;\n", tot_response / cont_ok);
+	fprintf(out, "best response;%.3f ms;\n", min_response);
+	fprintf(out, "worst response;%.3f ms;\n", max_response);
+	fprintf(out, "deleted emails;%d;\n", deleted_emails);
+	fprintf(out, ";;\n");
+	fprintf(out, "DOMAIN;RTT (ms);DEL_EMAILS;\n");
 	
 	fclose(out);
 }

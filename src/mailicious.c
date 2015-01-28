@@ -307,6 +307,7 @@ int export_email(char **_args, int _argc)
 	mailing_list_t mailing_list;
 	char *token;
 	int i, j;
+	int tot;
 	
 	if(_argc < 4)
 	{
@@ -320,9 +321,9 @@ int export_email(char **_args, int _argc)
 	file_size = strtol(_args[3], NULL, 10);
 	
 	if(_argc == 4)
-		print_list(&mailing_list, _args[2], file_size, 0, "\n");
+		tot = print_list(&mailing_list, _args[2], file_size, 0, "\n");
 	else if(_argc == 5 && strcmp(_args[4], "-w") == 0)
-		print_list(&mailing_list, _args[2], file_size, 1, "\n");
+		tot = print_list(&mailing_list, _args[2], file_size, 1, "\n");
 	else if(_argc == 5 && strcmp(_args[4], "-w") != 0)
 	{
 		token = strdup(_args[4]);
@@ -336,13 +337,15 @@ int export_email(char **_args, int _argc)
 			
 		}
 		token[strlen(token) - j] = '\0';
-		print_list(&mailing_list, _args[2], file_size, 0, token);
+		tot = print_list(&mailing_list, _args[2], file_size, 0, token);
 		free(token);
 	}
 	else
-		print_list(&mailing_list, _args[2], file_size, 1, _args[4]);
+		tot = print_list(&mailing_list, _args[2], file_size, 1, _args[4]);
 	
 	close_list(&mailing_list);
+	
+	printf("Exported %d emails\n\n", tot);
 	
 	return CMD_SUCCESSFUL;
 }
@@ -405,6 +408,9 @@ int delete_email(char **_args, int _argc)
 	/*delete a single email or a list of emails taken by an input file*/
 	
 	mailing_list_t mailing_list;
+	mailing_list_t temp_list;
+	FILE *file_to_parse;
+	char aux[PATH_MAX_LEN];
 	unsigned int pos = 0;
 	
 	if(_argc < 3)
@@ -417,7 +423,31 @@ int delete_email(char **_args, int _argc)
 		return CMD_ABORTED;
 	
 	if(strcmp(_args[2], "-f") == 0)
-		delete_emails(&mailing_list, _args[3]);
+	{
+		if((file_to_parse = fopen(_args[3], "r")) == NULL)
+		{
+			printf("Invalid file path\n");
+			return CMD_ABORTED;
+		}
+		create_new_list("tmpdelimprlist");
+		load_list(&temp_list, "tmpdelimprlist");
+		parse(&temp_list, file_to_parse, 1);
+		fclose(file_to_parse);
+		print_list(&temp_list, "unsubtmp", 0, 0, "\n");
+		
+		strcpy(aux, env_var.dbpath);
+		strcat(aux, "tmpdelimprlist.ind");
+		remove(aux);
+		strcpy(aux, env_var.dbpath);
+		strcat(aux, "tmpdelimprlist.dat");
+		remove(aux);
+		strcpy(aux, env_var.dbpath);
+		strcat(aux, "tmpdelimprlist.fds");
+		remove(aux);
+		
+		delete_emails(&mailing_list, "unsubtmp");
+		remove("unsubtmp");
+	}
 	else {
 		if((pos = search_email_record(&mailing_list, _args[2])) == NO_EMAIL)
 			printf("\nThe email is not in the database\n\n");

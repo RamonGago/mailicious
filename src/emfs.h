@@ -67,9 +67,16 @@ typedef struct
 	unsigned int next_email_pos;
 } email_node_t;
 
+typedef struct record_list_t
+{
+	unsigned int pos;
+	struct record_list_t *next_pos;
+} record_list_t;
+
 typedef struct domain_list_t
 {
 	char *domain;
+	record_list_t *record_list;
 	struct domain_list_t *next_domain;
 } domain_list_t;
 
@@ -83,7 +90,7 @@ unsigned int write_email_record(mailing_list_t *_mailing_list, char *_email, cha
 int add_email(mailing_list_t *_mailing_list, char *_email, char _warn);
 void delete_email_record(mailing_list_t *_mailing_list, unsigned int _pos);
 unsigned int search_email_record(mailing_list_t *_mailing_list, char *_email);
-void print_list(mailing_list_t *_mailing_list, char *_dir_path, int _list_size, int _no_warn, char *_separator_token);
+int print_list(mailing_list_t *_mailing_list, char *_dir_path, int _list_size, int _no_warn, char *_separator_token);
 int update_email(mailing_list_t *_mailing_list, char *_old_email, char *_new_email, char _warn);
 void delete_emails(mailing_list_t *_mailing_list, char *_delete_list_path);
 void check_domain(mailing_list_t *_mailing_list, char *_out_name);
