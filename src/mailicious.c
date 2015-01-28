@@ -51,6 +51,7 @@ void load_conf_data()
 		printf("Loaded default option\n\n");
 		return;
 	}
+	
 	while(fgets(str, LINE_MAX_LEN, conf))
 	{
 		strexp(&args, &argc, str, " \t\n");
@@ -128,6 +129,9 @@ void init_program_data(char *_arg0)
 	
 	strcpy(env_var.dbpath, env_var.work_dir);
 	strcat(env_var.dbpath, DB_PATH);
+	
+	if(!opendir(env_var.dbpath))
+		mkdir(env_var.dbpath, S_IRWXU | S_IRWXG | S_IRWXO);
 	
 	if(load_domains() == ERROR)
 	{
