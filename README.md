@@ -1,2 +1,2 @@
 # mailicious
-Mailing list parses and handler with shell interface
+Mailing list parser and handler with shell interface
