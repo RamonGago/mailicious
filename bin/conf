@@ -1,0 +1,43 @@
+#DO NOT MODIFY THIS FILE UNLESS YOU ARE SURE WHAT YOU ARE DOING.
+#CHANGE ONLY PARAMETERS VALUE.
+#ANY OTHER ALTERATION WILL BE IGNORED AND COULD CAUSE PROGRAM MALFUNCTION.
+
+
+#localpart and domain invalid characters tolerance
+lp_ic_tolerance 0
+dom_ic_tolerance 0
+
+#email average and warning length threshold
+email_avg_len 30
+email_warn_len 45
+
+#localpart average and warning thresholds
+#length
+lp_avg_len 20
+lp_warn_len 30
+#numeric chars
+lp_avg_num 4
+lp_warn_num 5
+#point chars
+lp_avg_p 2
+lp_warn_p 3
+#hyphen chars
+lp_avg_hyp 1
+lp_warn_hyp 2
+#underscore chars
+lp_avg_und 1
+lp_warn_und 2
+
+#domain average and warning thresholds
+#length
+dom_avg_len 16
+dom_warn_len 30
+#numeric chars
+dom_avg_num 2
+dom_warn_num 4
+#hyphen chars
+dom_avg_hyp 1
+dom_warn_hyp 2
+#underscore chars
+dom_avg_und 1
+dom_warn_und 1
